@@ -3,7 +3,6 @@
 """
 Run a YOLO_v3 style detection model on test images.
 """
-
 import colorsys
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
