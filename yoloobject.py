@@ -20,15 +20,14 @@ gpu_num=1
 
 import cv2
 
+# キーの入力待ちをしないでキー入力を取得
 def getkey():
     fno = sys.stdin.fileno()
-    #stdinの端末属性を取得
     attr_old = termios.tcgetattr(fno)
-    # stdinのエコー無効、カノニカルモード無効
     attr = termios.tcgetattr(fno)
     attr[3] = attr[3] & ~termios.ECHO & ~termios.ICANON # & ~termios.ISIG
     termios.tcsetattr(fno, termios.TCSADRAIN, attr)
-    # stdinをNONBLOCKに設定
+    
     fcntl_old = fcntl.fcntl(fno, fcntl.F_GETFL)
     fcntl.fcntl(fno, fcntl.F_SETFL, fcntl_old | os.O_NONBLOCK)
 
@@ -118,7 +117,8 @@ class YOLO(object):
 
     def detect_image(self, image):
         start = timer()
-
+        #image0 = imageにしてしまうとimageと連動してしまう
+        image0 = image.copy()
         if self.model_image_size != (None, None):
             assert self.model_image_size[0]%32 == 0, 'Multiples of 32 required'
             assert self.model_image_size[1]%32 == 0, 'Multiples of 32 required'
@@ -167,7 +167,7 @@ class YOLO(object):
             # screenshot
             # 's'
             if key == 115:
-                shot = np.array(image)[:,:,(2,1,0)][top:bottom,left:right]
+                shot = np.array(image0)[:,:,(2,1,0)][top:bottom,left:right]
                 cv2.imwrite('./picture/{}.png'.format(i), shot)
 
             if top - label_size[1] >= 0:
