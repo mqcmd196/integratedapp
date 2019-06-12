@@ -1,11 +1,8 @@
-#! /usr/bin/env python
-# -*- coding: utf-8 -*-
-"""
-Run a YOLO_v3 style detection model on test images.
-"""
-
 import colorsys
 import os
+import fcntl
+import termios
+import sys
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 from timeit import default_timer as timer
 
@@ -17,16 +14,39 @@ from PIL import Image, ImageFont, ImageDraw
 
 from yolo3.model import yolo_eval, yolo_body, tiny_yolo_body
 from yolo3.utils import letterbox_image
-import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 from keras.utils import multi_gpu_model
 gpu_num=1
 
-#- Added
 import cv2
-cap = cv2.VideoCapture(0)
-camera_scale = 1.
-#-
+
+def getkey():
+    fno = sys.stdin.fileno()
+    #stdinの端末属性を取得
+    attr_old = termios.tcgetattr(fno)
+    # stdinのエコー無効、カノニカルモード無効
+    attr = termios.tcgetattr(fno)
+    attr[3] = attr[3] & ~termios.ECHO & ~termios.ICANON # & ~termios.ISIG
+    termios.tcsetattr(fno, termios.TCSADRAIN, attr)
+    # stdinをNONBLOCKに設定
+    fcntl_old = fcntl.fcntl(fno, fcntl.F_GETFL)
+    fcntl.fcntl(fno, fcntl.F_SETFL, fcntl_old | os.O_NONBLOCK)
+
+    chr = 0
+
+    try:
+        # キーを取得
+        c = sys.stdin.read(1)
+        if len(c):
+            while len(c):
+                chr = (chr << 8) + ord(c)
+                c = sys.stdin.read(1)
+    finally:
+        # stdinを元に戻す
+        fcntl.fcntl(fno, fcntl.F_SETFL, fcntl_old)
+        termios.tcsetattr(fno, termios.TCSANOW, attr_old)
+
+    return chr
 
 class YOLO(object):
     def __init__(self):
@@ -127,6 +147,7 @@ class YOLO(object):
                     size=np.floor(3e-2 * image.size[1] + 0.5).astype('int32'))
         thickness = (image.size[0] + image.size[1]) // 300
 
+        key = getkey()
         for i, c in reversed(list(enumerate(out_classes))):
             predicted_class = self.class_names[c]
             box = out_boxes[i]
@@ -142,13 +163,18 @@ class YOLO(object):
             bottom = min(image.size[1], np.floor(bottom + 0.5).astype('int32'))
             right = min(image.size[0], np.floor(right + 0.5).astype('int32'))
             print(label, (left, top), (right, bottom))
+            
+            # screenshot
+            # 's'
+            if key == 115:
+                shot = np.array(image)[:,:,(2,1,0)][top:bottom,left:right]
+                cv2.imwrite('./picture/{}.png'.format(i), shot)
 
             if top - label_size[1] >= 0:
                 text_origin = np.array([left, top - label_size[1]])
             else:
                 text_origin = np.array([left, top + 1])
 
-            # My kingdom for a good redistributable image drawing library.
             for i in range(thickness):
                 draw.rectangle(
                     [left + i, top + i, right - i, bottom - i],
@@ -165,69 +191,3 @@ class YOLO(object):
 
     def close_session(self):
         self.sess.close()
-
-
-def detect_video(yolo, video_path, output_path=""):
-    import cv2
-    vid = cv2.VideoCapture(video_path)
-    if not vid.isOpened():
-        raise IOError("Couldn't open webcam or video")
-    video_FourCC    = int(vid.get(cv2.CAP_PROP_FOURCC))
-    video_fps       = vid.get(cv2.CAP_PROP_FPS)
-    video_size      = (int(vid.get(cv2.CAP_PROP_FRAME_WIDTH)),
-                        int(vid.get(cv2.CAP_PROP_FRAME_HEIGHT)))
-    isOutput = True if output_path != "" else False
-    if isOutput:
-        print("!!! TYPE:", type(output_path), type(video_FourCC), type(video_fps), type(video_size))
-        out = cv2.VideoWriter(output_path, video_FourCC, video_fps, video_size)
-    accum_time = 0
-    curr_fps = 0
-    fps = "FPS: ??"
-    prev_time = timer()
-    while True:
-        return_value, frame = vid.read()
-        image = Image.fromarray(frame)
-        image = yolo.detect_image(image)
-        result = np.asarray(image)
-        curr_time = timer()
-        exec_time = curr_time - prev_time
-        prev_time = curr_time
-        accum_time = accum_time + exec_time
-        curr_fps = curr_fps + 1
-        if accum_time > 1:
-            accum_time = accum_time - 1
-            fps = "FPS: " + str(curr_fps)
-            curr_fps = 0
-        cv2.putText(result, text=fps, org=(3, 15), fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-                    fontScale=0.50, color=(255, 0, 0), thickness=2)
-        cv2.namedWindow("result", cv2.WINDOW_NORMAL)
-        cv2.imshow("result", result)
-        if isOutput:
-            out.write(result)
-        if cv2.waitKey(50) & 0xFF == ord('q'):
-            break
-
-    yolo.close_session()
-
-
-def detect_img(yolo):
-    while True:
-        ret, image = cap.read()
-        if cv2.waitKey(10) == 27:
-            break
-        h, w = image.shape[:2]
-        rh = int(h * camera_scale)
-        rw = int(w * camera_scale)
-        image = cv2.resize(image, (rw, rh))
-        image = image[:,:,(2,1,0)]
-        image = Image.fromarray(image)
-        r_image = yolo.detect_image(image)
-        out_img = np.array(r_image)[:,:,(2,1,0)]
-        cv2.imshow("YOLOv2", np.array(out_img))
-        cv2.waitKey(100)
-    yolo.close_session()
-
-
-
-if __name__ == '__main__':
-    detect_img(YOLO())
