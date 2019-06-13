@@ -5,7 +5,6 @@ import colorsys
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 from timeit import default_timer as timer
-from getch import getch, pause
 
 import numpy as np
 from PIL import Image, ImageFont, ImageDraw
